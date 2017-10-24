@@ -1,5 +1,6 @@
 
 import inspect
+import re
 import types
 
 
@@ -51,8 +52,9 @@ class DeepInspect(object):
             return 'circular_reference:{}'.format(var)
         self._visited_ids.add(id_)
 
-        if T is dict:
-            return self.inspect_dict(var.iteritems(), o_dict, prefix='dict:')
+        if 'iteritems' in dir(T):
+            type_name = getattr(T, '__name__', 'dict')
+            return self.inspect_dict(var.iteritems(), o_dict, prefix='{}:'.format(type_name))
 
         if '__iter__' in dir(var):
             type_name = getattr(T, '__name__', 'sequence')
@@ -73,6 +75,46 @@ class DeepInspect(object):
             else:
                 o_dict[nice_k] = r
         return COMPLEXTYPE
+
+
+class InspectorTemplate(object):
+    """
+    Template: a comma-separate list of attribute names and getter method names;
+    Getter methods are expected to take no argument;
+
+    """
+    def __init__(self, template):
+        self._attr_names = list()
+        self._getter_names = list()
+        for token in template.split(','):
+            token = token.strip()
+            if token.endswith('()'):
+                self._getter_names.append(token.replace('()', ''))
+            else:
+                self._attr_names.append(token)
+
+    def __call__(self, var):
+        T = type(var)
+        result = dict()
+        type_name = getattr(T, '__name__', '')
+        if type_name:
+            result['type'] = type_name
+        for attr_name in self._attr_names:
+            try:
+                attr_value = getattr(var, attr_name, '')
+            except Exception, e:
+                attr_value = repr(e)
+            if attr_value:
+                result[attr_name] = attr_value
+        for getter_name in self._getter_names:
+            meth = getattr(var, getter_name, None)
+            if meth is not None:
+                try:
+                    v = meth()
+                except Exception, e:
+                    v = repr(e)
+                result['{}()'.format(getter_name)] = DeepInspect()(v)
+        return result
 
 
 class FrameInspectorBase(object):
@@ -97,11 +139,32 @@ class FrameInspectorBase(object):
     def __init__(self):
         self._filters = list()
         self._parser = FrameInspectorBase.default_parse
-        self._var_serializers = dict()
-        self._deep_inspect = DeepInspect()
+        self._inspector_by_type = dict()
+        self._inspector_by_regex = dict()
 
-    def register_serializer(self, type_, op):
-        self._var_serializers[type_] = op
+    def register_inspector(self, type_, op):
+        """
+
+        Args:
+            type_ (type):
+            op (callable):
+
+        Returns:
+
+        """
+        self._inspector_by_type[type_] = op
+
+    def register_inspector_regex(self, type_regex, op):
+        """
+
+        Args:
+            type_regex (str):
+            op (callable):
+
+        Returns:
+
+        """
+        self._inspector_by_regex[type_regex] = op
 
     def register_filter(self, fi):
         self._filters.append(fi)
@@ -122,9 +185,17 @@ class FrameInspectorBase(object):
                 return False
         return True
 
-    def serialize(self, var):
+    def inspect_var(self, var):
         T = type(var)
-        op = self._var_serializers.get(T, self._deep_inspect)
+        type_name = getattr(T, '__name__', '')
+        op = self._inspector_by_type.get(T, None)
+        if op is None and type_name:
+            for regex, _ in self._inspector_by_regex.iteritems():
+                if re.match(regex, type_name) is not None:
+                    op = _
+                    break
+        if op is None:
+            op = DeepInspect()
         return op(var)
 
     def inspect(self, f):
@@ -142,7 +213,7 @@ class FrameInspectorBase(object):
         result.update(self._parser(f))
         variables = dict()
         for name, value in f.f_locals.iteritems():
-            serialized_value = self.serialize(value)
+            serialized_value = self.inspect_var(value)
             variables[name] = serialized_value
         result['variables'] = variables
         return result
