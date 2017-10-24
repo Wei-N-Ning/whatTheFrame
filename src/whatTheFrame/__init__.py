@@ -66,6 +66,8 @@ class VarDeepInspect(object):
         return str(var)
 
     def inspect_dict(self, item_iter, o_dict, prefix='key:'):
+        if '__iter__' not in dir(item_iter):
+            return str(item_iter)
         for k, v in item_iter:
             d = dict()
             r = self.inspect(v, d)
@@ -187,11 +189,14 @@ class FrameInspectorBase(object):
 
     def inspect_var(self, var):
         T = type(var)
-        type_name = getattr(T, '__name__', '')
+        full_type_name = str(type(var))
+        _ = re.search('\'(.+)\'', str(type(var)))
+        if _ is not None:
+            full_type_name = _.groups()[0]
         op = self._inspector_by_type.get(T, None)
-        if op is None and type_name:
+        if op is None:
             for regex, _ in self._inspector_by_regex.iteritems():
-                if re.match(regex, type_name) is not None:
+                if re.match(regex, full_type_name) is not None:
                     op = _
                     break
         if op is None:

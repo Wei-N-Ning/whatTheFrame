@@ -23,6 +23,15 @@ class A(object):
         raise RuntimeError('by designed')
 
 
+class PropertiesItemGenerator:
+
+    def __init__(self, **kwargs):
+        self._d = dict(**kwargs)
+
+    def __getitem__(self, item):
+        return self._d[item]
+
+
 class TestDeepInspect(unittest.TestCase):
 
     def setUp(self):
@@ -55,3 +64,11 @@ class TestDeepInspect(unittest.TestCase):
         od = collections.OrderedDict(a=1, b=2)
         result = self.op(od)
         self.assertEqual({'OrderedDict:a': 1, 'OrderedDict:b': 2}, result)
+
+    def test_dictLikeObjectNotIterable_expectCorrectlyHandled(self):
+        class BrokenDict(object):
+            def iteritems(self):
+                return 0
+        bd = BrokenDict()
+        result = self.op(bd)
+        self.assertTrue(result)

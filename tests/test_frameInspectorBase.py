@@ -26,10 +26,18 @@ class TestFrameInspectorBase(unittest.TestCase):
         result = self.op.inspect_var(b)
         self.assertEqual({'custom': '++'}, result)
 
-    def test_registerInspectorByRegex_expectValue(self):
+    def test_registerInspectorByRegex_expectFailToMatch(self):
         def inspect(var):
             return {'custom': '++'}
         self.op.register_inspector_regex('AB\w+', inspect)
+        b = ABoom(a=1, b=2)
+        result1 = self.op.inspect_var(b)
+        self.assertEqual({'ABoom:a': 1, 'ABoom:b': 2}, result1)
+
+    def test_registerInspectorByRegex_mustUseFullTypeName(self):
+        def inspect(var):
+            return {'custom': '++'}
+        self.op.register_inspector_regex('.+AB\w+', inspect)
         b = B(a=1, b=2)
         result1 = self.op.inspect_var(b)
         self.assertEqual({'B:a': 1, 'B:b': 2}, result1)
