@@ -2,16 +2,16 @@
 import unittest
 from pprint import pprint as pp
 
-from whatTheFrame import deepInspect
+from whatTheFrame import DeepInspect
 
 
 class TestDeepInspect(unittest.TestCase):
 
     def setUp(self):
-        self.op = deepInspect.DeepInspect()
+        self.op = DeepInspect()
 
     def test_containerTypes(self):
-        result = self.op.do([1, {'a': 33.34}])
+        result = self.op([1, {'a': 33.34}])
         self.assertEqual({'list:0': 1, 'list:1': {'dict:a': 33.34}}, result)
 
     def test_classInstances(self):
@@ -24,7 +24,7 @@ class TestDeepInspect(unittest.TestCase):
             def __init__(self, a, b):
                 self.a = a
                 self.b = b
-        result = self.op.do((A('something', {'make_it_harder': True}), A([1.03, 2e-1, -0x2], A(None, 2))))
+        result = self.op((A('something', {'make_it_harder': True}), A([1.03, 2e-1, -0x2], A(None, 2))))
         self.assertEqual(
             {'attr:a': 'something', 'attr:b': {'dict:make_it_harder': True}}, result['tuple:0'])
 
