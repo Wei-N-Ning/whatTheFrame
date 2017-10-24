@@ -1,5 +1,4 @@
 
-import collections
 import inspect
 import types
 
@@ -16,8 +15,12 @@ class DeepInspect(object):
 
     primitive_types = {int, float, bool, basestring, types.NoneType}
 
+    def __init__(self):
+        # to avoid circular reference
+        self._visited_ids = set()
+
     def __call__(self, var):
-        o_dict = collections.OrderedDict()
+        o_dict = dict()
         ret = self.inspect(var, o_dict)
         if ret is COMPLEXTYPE:
             return o_dict
@@ -33,15 +36,20 @@ class DeepInspect(object):
 
         Returns:
             if the given object is of a primitive type, return its value;
-            if the given object does not have a __dict__ attribute (such as FFI objects), return
-                its string representation;
-            for everything else return COMPLEXTYPE
+            if the given object does not have a __dict__ attribute (such as FFI objects), return its string
+                representation;
+            for everything else return COMPLEXTYPE;
         """
 
         T = type(var)
 
         if T in self.primitive_types:
             return var
+
+        id_ = id(var)
+        if id_ in self._visited_ids:
+            return 'circular_reference:{}'.format(var)
+        self._visited_ids.add(id_)
 
         if T is dict:
             return self.inspect_dict(var.iteritems(), o_dict, prefix='dict:')
@@ -57,7 +65,7 @@ class DeepInspect(object):
 
     def inspect_dict(self, item_iter, o_dict, prefix='key:'):
         for k, v in item_iter:
-            d = collections.OrderedDict()
+            d = dict()
             r = self.inspect(v, d)
             nice_k = '{}{}'.format(prefix, k)
             if r is COMPLEXTYPE:
