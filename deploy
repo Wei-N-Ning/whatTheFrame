@@ -1,0 +1,6 @@
+#!/bin/bash
+rm -rf build
+mkdir build
+cd ./src
+zip -r ../build/wtf.pz whatTheFrame
+cd ..

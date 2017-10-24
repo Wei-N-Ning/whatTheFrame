@@ -1,0 +1,4 @@
+#!/bin/bash
+./deploy
+PYTHONPATH=$PYTHONPATH:./build/wtf.pz python -m unittest discover ./tests
+python ./tests/packageTest.py
