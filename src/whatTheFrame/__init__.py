@@ -1,5 +1,12 @@
 
 import inspect
+import types
+
+
+class ObjectSerializer(object):
+
+    def register_serializer(self, type_, op):
+        return
 
 
 class FrameInspectorBase(object):
@@ -19,11 +26,11 @@ class FrameInspectorBase(object):
     The result is a Python dict that can be serialized to a json string.
     """
 
-    _json_friendly_types = {int, float, bool, tuple, dict, list}
+    _json_friendly_types = {int, float, bool, basestring}
 
     def __init__(self):
         self._filters = list()
-        self._parser = FrameInspectorBase._default_parse
+        self._parser = FrameInspectorBase.default_parse
         self._var_serializers = dict()
 
     def register_serializer(self, type_, op):
@@ -36,23 +43,20 @@ class FrameInspectorBase(object):
         self._parser = pa
 
     @staticmethod
-    def _default_parse(f):
+    def default_parse(f):
         (filename, line_number, function_name, lines, index) = inspect.getframeinfo(f)
         return dict(filename=filename, line_number=line_number, function_name=function_name, lines=lines, index=index)
 
-    @classmethod
-    def _default_serializer(cls, var):
-        if type(var) in cls._json_friendly_types:
-            return var
-        return str(var)
-
-    def _filter_frame(self, f):
+    def filter_frame(self, f):
         if not self._filters:
             return True
         for fi in self._filters:
             if not fi(f):
                 return False
         return True
+
+    def serialize(self, var):
+        return ''
 
     def inspect(self, f):
         """
@@ -64,13 +68,12 @@ class FrameInspectorBase(object):
             dict:
         """
         result = dict()
-        if not self._filter_frame(f):
+        if not self.filter_frame(f):
             return result
         result.update(self._parser(f))
         variables = dict()
         for name, value in f.f_locals.iteritems():
-            op = self._var_serializers.get(type(value), self._default_serializer)
-            serialized_value = op(value)
+            serialized_value = self.serialize(value)
             variables[name] = serialized_value
         result['variables'] = variables
         return result
