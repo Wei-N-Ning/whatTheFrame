@@ -8,7 +8,7 @@ class COMPLEXTYPE(object):
     pass
 
 
-class DeepInspect(object):
+class VarDeepInspect(object):
     """
     Given a Python object, inspects its state via its __dict__ attribute if it has one;
     Recursively looks into its attributes and returns a nested dictionary.
@@ -56,7 +56,7 @@ class DeepInspect(object):
             type_name = getattr(T, '__name__', 'dict')
             return self.inspect_dict(var.iteritems(), o_dict, prefix='{}:'.format(type_name))
 
-        if '__iter__' in dir(var):
+        if '__iter__' in dir(var) and not isinstance(var, types.FileType):
             type_name = getattr(T, '__name__', 'sequence')
             return self.inspect_dict(enumerate(var), o_dict, prefix='{}:'.format(type_name))
 
@@ -77,7 +77,7 @@ class DeepInspect(object):
         return COMPLEXTYPE
 
 
-class InspectorTemplate(object):
+class VarInspectorTemplate(object):
     """
     Template: a comma-separate list of attribute names and getter method names;
     Getter methods are expected to take no argument;
@@ -113,7 +113,7 @@ class InspectorTemplate(object):
                     v = meth()
                 except Exception, e:
                     v = repr(e)
-                result['{}()'.format(getter_name)] = DeepInspect()(v)
+                result['{}()'.format(getter_name)] = VarDeepInspect()(v)
         return result
 
 
@@ -195,7 +195,7 @@ class FrameInspectorBase(object):
                     op = _
                     break
         if op is None:
-            op = DeepInspect()
+            op = VarDeepInspect()
         return op(var)
 
     def inspect(self, f):
@@ -274,4 +274,12 @@ class ReverseFromCurrentFrame(FrameIterI):
 
 
 class ReverseFromTB(FrameIterI):
-    pass
+
+    def __init__(self, tb):
+        self._tb = tb
+
+    def __iter__(self):
+        f = self._tb.tb_frame
+        while f:
+            yield f
+            f = f.f_back
