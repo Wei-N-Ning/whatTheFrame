@@ -72,3 +72,14 @@ class TestDeepInspect(unittest.TestCase):
         bd = BrokenDict()
         result = self.op(bd)
         self.assertTrue(result)
+
+    def test_varIsAType_expectTexturalInspectionResult(self):
+        class Fancy(dict):
+            pass
+        var = Fancy
+        result = self.op(var)
+        self.assertTrue(result)
+        self.assertIsInstance(result, str)
+
+
+

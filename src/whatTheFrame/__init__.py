@@ -22,7 +22,10 @@ class VarDeepInspect(object):
 
     def __call__(self, var):
         o_dict = dict()
-        ret = self.inspect(var, o_dict)
+        try:
+            ret = self.inspect(var, o_dict)
+        except Exception, e:
+            return o_dict
         if ret is COMPLEXTYPE:
             return o_dict
         return ret
@@ -41,6 +44,9 @@ class VarDeepInspect(object):
                 representation;
             for everything else return COMPLEXTYPE;
         """
+
+        if isinstance(var, type):
+            return str(var)
 
         T = type(var)
 
