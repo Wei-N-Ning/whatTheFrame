@@ -1,5 +1,128 @@
 
 import inspect
+import re
+import types
+
+
+class COMPLEXTYPE(object):
+    pass
+
+
+class VarDeepInspect(object):
+    """
+    Given a Python object, inspects its state via its __dict__ attribute if it has one;
+    Recursively looks into its attributes and returns a nested dictionary.
+    """
+
+    primitive_types = {int, float, bool, basestring, types.NoneType}
+
+    def __init__(self):
+        # to avoid circular reference
+        self._visited_ids = set()
+
+    def __call__(self, var):
+        o_dict = dict()
+        try:
+            ret = self.inspect(var, o_dict)
+        except Exception, e:
+            return o_dict
+        if ret is COMPLEXTYPE:
+            return o_dict
+        return ret
+
+    def inspect(self, var, o_dict):
+        """
+        if the given object is a standard Python container type or possess __dict__ attributes,
+        recurse into its elements or attributes
+        Args:
+            var:
+            o_dict (dict):
+
+        Returns:
+            if the given object is of a primitive type, return its value;
+            if the given object does not have a __dict__ attribute (such as FFI objects), return its string
+                representation;
+            for everything else return COMPLEXTYPE;
+        """
+
+        if isinstance(var, type):
+            return str(var)
+
+        T = type(var)
+
+        if T in self.primitive_types:
+            return var
+
+        id_ = id(var)
+        if id_ in self._visited_ids:
+            return 'circular_reference:{}'.format(var)
+        self._visited_ids.add(id_)
+
+        if 'iteritems' in dir(T):
+            type_name = getattr(T, '__name__', 'dict')
+            return self.inspect_dict(var.iteritems(), o_dict, prefix='{}:'.format(type_name))
+
+        if '__iter__' in dir(var) and not isinstance(var, types.FileType):
+            type_name = getattr(T, '__name__', 'sequence')
+            return self.inspect_dict(enumerate(var), o_dict, prefix='{}:'.format(type_name))
+
+        if '__dict__' in dir(var):
+            return self.inspect_dict(var.__dict__.iteritems(), o_dict, prefix='attr:')
+
+        return str(var)
+
+    def inspect_dict(self, item_iter, o_dict, prefix='key:'):
+        if '__iter__' not in dir(item_iter):
+            return str(item_iter)
+        for k, v in item_iter:
+            d = dict()
+            r = self.inspect(v, d)
+            nice_k = '{}{}'.format(prefix, k)
+            if r is COMPLEXTYPE:
+                o_dict[nice_k] = d
+            else:
+                o_dict[nice_k] = r
+        return COMPLEXTYPE
+
+
+class VarInspectorTemplate(object):
+    """
+    Template: a comma-separate list of attribute names and getter method names;
+    Getter methods are expected to take no argument;
+
+    """
+    def __init__(self, template):
+        self._attr_names = list()
+        self._getter_names = list()
+        for token in template.split(','):
+            token = token.strip()
+            if token.endswith('()'):
+                self._getter_names.append(token.replace('()', ''))
+            else:
+                self._attr_names.append(token)
+
+    def __call__(self, var):
+        T = type(var)
+        result = dict()
+        type_name = getattr(T, '__name__', '')
+        if type_name:
+            result['type'] = type_name
+        for attr_name in self._attr_names:
+            try:
+                attr_value = getattr(var, attr_name, '')
+            except Exception, e:
+                attr_value = repr(e)
+            if attr_value:
+                result[attr_name] = attr_value
+        for getter_name in self._getter_names:
+            meth = getattr(var, getter_name, None)
+            if meth is not None:
+                try:
+                    v = meth()
+                except Exception, e:
+                    v = repr(e)
+                result['{}()'.format(getter_name)] = VarDeepInspect()(v)
+        return result
 
 
 class FrameInspectorBase(object):
@@ -19,15 +142,37 @@ class FrameInspectorBase(object):
     The result is a Python dict that can be serialized to a json string.
     """
 
-    _json_friendly_types = {int, float, bool, tuple, dict, list}
+    _json_friendly_types = {int, float, bool, basestring}
 
     def __init__(self):
         self._filters = list()
-        self._parser = FrameInspectorBase._default_parse
-        self._var_serializers = dict()
+        self._parser = FrameInspectorBase.default_parse
+        self._inspector_by_type = dict()
+        self._inspector_by_regex = dict()
 
-    def register_serializer(self, type_, op):
-        self._var_serializers[type_] = op
+    def register_inspector(self, type_, op):
+        """
+
+        Args:
+            type_ (type):
+            op (callable):
+
+        Returns:
+
+        """
+        self._inspector_by_type[type_] = op
+
+    def register_inspector_regex(self, type_regex, op):
+        """
+
+        Args:
+            type_regex (str):
+            op (callable):
+
+        Returns:
+
+        """
+        self._inspector_by_regex[type_regex] = op
 
     def register_filter(self, fi):
         self._filters.append(fi)
@@ -36,23 +181,33 @@ class FrameInspectorBase(object):
         self._parser = pa
 
     @staticmethod
-    def _default_parse(f):
+    def default_parse(f):
         (filename, line_number, function_name, lines, index) = inspect.getframeinfo(f)
         return dict(filename=filename, line_number=line_number, function_name=function_name, lines=lines, index=index)
 
-    @classmethod
-    def _default_serializer(cls, var):
-        if type(var) in cls._json_friendly_types:
-            return var
-        return str(var)
-
-    def _filter_frame(self, f):
+    def filter_frame(self, f):
         if not self._filters:
             return True
         for fi in self._filters:
             if not fi(f):
                 return False
         return True
+
+    def inspect_var(self, var):
+        T = type(var)
+        full_type_name = str(type(var))
+        _ = re.search('\'(.+)\'', str(type(var)))
+        if _ is not None:
+            full_type_name = _.groups()[0]
+        op = self._inspector_by_type.get(T, None)
+        if op is None:
+            for regex, _ in self._inspector_by_regex.iteritems():
+                if re.match(regex, full_type_name) is not None:
+                    op = _
+                    break
+        if op is None:
+            op = VarDeepInspect()
+        return op(var)
 
     def inspect(self, f):
         """
@@ -64,13 +219,17 @@ class FrameInspectorBase(object):
             dict:
         """
         result = dict()
-        if not self._filter_frame(f):
+        if not self.filter_frame(f):
             return result
         result.update(self._parser(f))
         variables = dict()
+
+        # beware: f.f_locals can contain excess amount of information
+        # for example, if running in the script editor in Motionbuilder, the local variables may contain the ENTIRE
+        # collection of the FB class members if the SUT did a wild import: from fbsdk import *
+
         for name, value in f.f_locals.iteritems():
-            op = self._var_serializers.get(type(value), self._default_serializer)
-            serialized_value = op(value)
+            serialized_value = self.inspect_var(value)
             variables[name] = serialized_value
         result['variables'] = variables
         return result
@@ -131,4 +290,12 @@ class ReverseFromCurrentFrame(FrameIterI):
 
 
 class ReverseFromTB(FrameIterI):
-    pass
+
+    def __init__(self, tb):
+        self._tb = tb
+
+    def __iter__(self):
+        f = self._tb.tb_frame
+        while f:
+            yield f
+            f = f.f_back

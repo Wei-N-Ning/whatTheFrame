@@ -1,5 +1,9 @@
 build
+.tox
+.cache
 .idea
 *pyc
 *~
 staging
+dist
+MANIFEST
