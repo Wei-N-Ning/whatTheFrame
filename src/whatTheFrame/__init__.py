@@ -223,6 +223,11 @@ class FrameInspectorBase(object):
             return result
         result.update(self._parser(f))
         variables = dict()
+
+        # beware: f.f_locals can contain excess amount of information
+        # for example, if running in the script editor in Motionbuilder, the local variables may contain the ENTIRE
+        # collection of the FB class members if the SUT did a wild import: from fbsdk import *
+
         for name, value in f.f_locals.iteritems():
             serialized_value = self.inspect_var(value)
             variables[name] = serialized_value
